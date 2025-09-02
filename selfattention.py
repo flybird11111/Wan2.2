@@ -26,7 +26,8 @@ class WanSelfAttention(nn.Module):
         self.norm_q = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
         self.norm_k = WanRMSNorm(dim, eps=eps) if qk_norm else nn.Identity()
 
-    def forward(self, x, seq_lens, grid_sizes, freqs):
+    # def forward(self, x, seq_lens, grid_sizes, freqs):
+    def forward(self, q, k, v, seq_lens, grid_sizes, freqs):
         r"""
         Args:
             x(Tensor): Shape [B, L, num_heads, C / num_heads]
@@ -34,16 +35,16 @@ class WanSelfAttention(nn.Module):
             grid_sizes(Tensor): Shape [B, 3], the second dimension contains (F, H, W)
             freqs(Tensor): Rope freqs, shape [1024, C / num_heads / 2]
         """
-        b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
+        # b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
 
-        # query, key, value function
-        def qkv_fn(x):
-            q = self.norm_q(self.q(x)).view(b, s, n, d)
-            k = self.norm_k(self.k(x)).view(b, s, n, d)
-            v = self.v(x).view(b, s, n, d)
-            return q, k, v
+        # # query, key, value function
+        # def qkv_fn(x):
+        #     q = self.norm_q(self.q(x)).view(b, s, n, d)
+        #     k = self.norm_k(self.k(x)).view(b, s, n, d)
+        #     v = self.v(x).view(b, s, n, d)
+        #     return q, k, v
 
-        q, k, v = qkv_fn(x)
+        # q, k, v = qkv_fn(x)
 
         x = flash_attention(
             q=rope_apply(q, grid_sizes, freqs),

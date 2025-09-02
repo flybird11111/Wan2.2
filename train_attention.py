@@ -24,15 +24,21 @@ class WanAttentionTrainer(nn.Module):
             window_size=window_size, qk_norm=qk_norm, eps=eps
         )
 
-    def forward(self, x, seq_lens, grid_sizes, freqs, return_loss=True):
+    # def forward(self, x, seq_lens, grid_sizes, freqs, return_loss=True):
+    def forward(self, q, k, v, seq_lens, grid_sizes, freqs, return_loss=True):
         # forward
-        out_flash = self.flash_attn(x, seq_lens, grid_sizes, freqs)
+
+        q = torch.clamp(q, min=-9.6328, max=14.1250)
+        k = torch.clamp(k, min=-13.9609, max=9.6875)
+        v = torch.clamp(v, min=-33.5000, max=33.7500)
+        
+        out_flash = self.flash_attn(q, k, v, seq_lens, grid_sizes, freqs)
         
         # 阻止 out_flash 的梯度传播，使其不参与训练
         with torch.no_grad():
             out_flash_detached = out_flash.detach()
         
-        out_sage = self.sage_attn(x, seq_lens, grid_sizes, freqs)
+        out_sage = self.sage_attn(q, k, v, seq_lens, grid_sizes, freqs)
         
         if return_loss:
             # 使用 detached 的 flash 输出计算一致性 loss
@@ -55,15 +61,18 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     # 构造输入
-    for i in range(500):
-        x = torch.randn(B, L, C).cuda()  # [B, L, n, d]
+    for i in range(10000):
+        # x = torch.randn(B, L, C).cuda()  # [B, L, n, d]
+        q = torch.randn(B, L, num_heads, head_dim).cuda()
+        k = torch.randn(B, L, num_heads, head_dim).cuda()
+        v = torch.randn(B, L, num_heads, head_dim).cuda()
         seq_lens = torch.tensor([L, L]).cuda()             # 每个 batch 的有效长度
         grid_sizes = torch.tensor([[8, 8, 2], [8, 8, 2]]).cuda()  # [B, 3]，随便造个立方网格 (F,H,W)
         freqs = torch.randn(L, head_dim // 2).cuda()
 
         # 前向 + 反向
         model.cuda()
-        loss, out_flash, out_sage = model(x, seq_lens, grid_sizes, freqs)
+        loss, out_flash, out_sage = model(q, k, v, seq_lens, grid_sizes, freqs)
         print(loss)
         optimizer.zero_grad()
         loss.backward()

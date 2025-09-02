@@ -31,7 +31,8 @@ class WanSageAttention(nn.Module):
         # Input: concatenated q, k, v -> Output: attention score shape
         self.qkv_to_attn = nn.Linear(dim * 3, num_heads)
 
-    def forward(self, x, seq_lens, grid_sizes, freqs):
+    # def forward(self, x, seq_lens, grid_sizes, freqs):
+    def forward(self, q, k, v, seq_lens, grid_sizes, freqs):
         r"""
         Args:
             x(Tensor): Shape [B, L, num_heads, C / num_heads]
@@ -39,16 +40,17 @@ class WanSageAttention(nn.Module):
             grid_sizes(Tensor): Shape [B, 3], the second dimension contains (F, H, W)
             freqs(Tensor): Rope freqs, shape [1024, C / num_heads / 2]
         """
-        b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
+        # b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
+        b, s, n, d = *q.shape[:2], self.num_heads, self.head_dim
 
-        # query, key, value function
-        def qkv_fn(x):
-            q = self.norm_q(self.q(x)).view(b, s, n, d)
-            k = self.norm_k(self.k(x)).view(b, s, n, d)
-            v = self.v(x).view(b, s, n, d)
-            return q, k, v
+        # # query, key, value function
+        # def qkv_fn(x):
+        #     q = self.norm_q(self.q(x)).view(b, s, n, d)
+        #     k = self.norm_k(self.k(x)).view(b, s, n, d)
+        #     v = self.v(x).view(b, s, n, d)
+        #     return q, k, v
 
-        q, k, v = qkv_fn(x)
+        # q, k, v = qkv_fn(x)
         
         # Prepare qkv for additional linear layer
         # Flatten q, k, v and concatenate them
@@ -67,6 +69,7 @@ class WanSageAttention(nn.Module):
 
         # Get attention output from flash_attention
         # Note: flash_attention typically returns [B, L, num_heads, head_dim]
+
         attn_output = flash_attention(
             q=q_rope,
             k=k_rope,
