@@ -16,29 +16,29 @@ class WanAttentionTrainer(nn.Module):
         self.num_heads = num_heads
         self.flash_attn = WanSelfAttention(
             dim=dim, num_heads=num_heads,
-            window_size=window_size, qk_norm=qk_norm, eps=eps
+            window_size=window_size
         )
         # Sage Attention 模块
         self.sage_attn = WanSageAttention(
             dim=dim, num_heads=num_heads,
-            window_size=window_size, qk_norm=qk_norm, eps=eps
+            window_size=window_size
         )
 
     # def forward(self, x, seq_lens, grid_sizes, freqs, return_loss=True):
-    def forward(self, q, k, v, seq_lens, grid_sizes, freqs, return_loss=True):
+    def forward(self, q, k, v, seq_lens, return_loss=True):
         # forward
 
         q = torch.clamp(q, min=-9.6328, max=14.1250)
         k = torch.clamp(k, min=-13.9609, max=9.6875)
         v = torch.clamp(v, min=-33.5000, max=33.7500)
         
-        out_flash = self.flash_attn(q, k, v, seq_lens, grid_sizes, freqs)
+        out_flash = self.flash_attn(q, k, v, seq_lens)
         
         # 阻止 out_flash 的梯度传播，使其不参与训练
         with torch.no_grad():
             out_flash_detached = out_flash.detach()
         
-        out_sage = self.sage_attn(q, k, v, seq_lens, grid_sizes, freqs)
+        out_sage = self.sage_attn(q, k, v, seq_lens)
         
         if return_loss:
             # 使用 detached 的 flash 输出计算一致性 loss
@@ -53,7 +53,7 @@ def main():
 
     B = 2
     L = 512
-    C = 2048
+    C = 1024
     num_heads = 8
     head_dim = C // num_heads
 
@@ -63,16 +63,15 @@ def main():
     # 构造输入
     for i in range(10000):
         # x = torch.randn(B, L, C).cuda()  # [B, L, n, d]
-        q = torch.randn(B, L, num_heads, head_dim).cuda()
-        k = torch.randn(B, L, num_heads, head_dim).cuda()
-        v = torch.randn(B, L, num_heads, head_dim).cuda()
+        q = torch.randn(B, L, num_heads, head_dim, dtype=torch.float16).cuda()
+        k = torch.randn(B, L, num_heads, head_dim, dtype=torch.float16).cuda()
+        v = torch.randn(B, L, num_heads, head_dim, dtype=torch.float16).cuda()
         seq_lens = torch.tensor([L, L]).cuda()             # 每个 batch 的有效长度
-        grid_sizes = torch.tensor([[8, 8, 2], [8, 8, 2]]).cuda()  # [B, 3]，随便造个立方网格 (F,H,W)
-        freqs = torch.randn(L, head_dim // 2).cuda()
 
         # 前向 + 反向
         model.cuda()
-        loss, out_flash, out_sage = model(q, k, v, seq_lens, grid_sizes, freqs)
+        model.to(torch.float16)
+        loss = model(q, k, v, seq_lens)
         print(loss)
         optimizer.zero_grad()
         loss.backward()
